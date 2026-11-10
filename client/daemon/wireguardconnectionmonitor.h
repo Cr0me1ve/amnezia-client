@@ -133,7 +133,7 @@ private:
             }
             bool ok = false;
             const quint64 number = bound.toULongLong(&ok);
-            if (!ok || number > std::numeric_limits<quint32>::max()) {
+            if (!ok || number > (std::numeric_limits<quint32>::max)()) {
                 return fallback;
             }
             if (index == 0) {
@@ -171,7 +171,7 @@ private:
         }
 
         m_lastRebindAtMsec = nowMsec;
-        m_retryIntervalMsec = std::min(m_retryIntervalMsec * 2, m_maxRetryIntervalMsec);
+        m_retryIntervalMsec = (std::min)(m_retryIntervalMsec * 2, m_maxRetryIntervalMsec);
         return Action::Rebind;
     }
 

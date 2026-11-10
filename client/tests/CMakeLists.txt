@@ -10,10 +10,12 @@ function(amnezia_copy_runtime_dlls)
     foreach(_target ${_targets})
         get_target_property(_type ${_target} TYPE)
         if(_type STREQUAL "EXECUTABLE")
+            set(_runtime_dlls "$<FILTER:$<TARGET_RUNTIME_DLLS:${_target}>,EXCLUDE,/Qt6[^/]*\\.dll$>")
             add_custom_command(TARGET ${_target} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "$<FILTER:$<TARGET_RUNTIME_DLLS:${_target}>,EXCLUDE,/Qt6[^/]*\\.dll$>"
-                    "$<TARGET_FILE_DIR:${_target}>"
+                COMMAND ${CMAKE_COMMAND} -E
+                    "$<IF:$<BOOL:${_runtime_dlls}>,copy_if_different,true>"
+                    "${_runtime_dlls}"
+                    "$<$<BOOL:${_runtime_dlls}>:$<TARGET_FILE_DIR:${_target}>>"
                 COMMAND_EXPAND_LISTS
             )
         endif()

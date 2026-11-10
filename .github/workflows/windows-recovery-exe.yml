@@ -1,0 +1,95 @@
+name: Windows recovery EXE
+
+on:
+  push:
+    branches:
+      - fix/windows-awg-handshake-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      QT_VERSION: 6.10.1
+      QT_FORCE_STDERR_LOGGING: '1'
+
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Qt and Installer Framework
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtremoteobjects qt5compat qtshadertools qthttpserver qtwebsockets
+          dir: ${{ runner.temp }}
+          tools: tools_ifw
+          set-env: true
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install Conan
+        run: python -m pip install conan==2.28.0
+
+      - name: Build EXE installer
+        shell: cmd
+        env:
+          QT_INSTALL_DIR: ${{ runner.temp }}
+          AMNEZIA_BUILD_TESTS: 'ON'
+        run: deploy\build.bat --installer ifw
+
+      - name: Run recovery regression tests
+        shell: cmd
+        run: |
+          set PATH=%CD%\deploy\build\client\Release;%PATH%
+          ctest --test-dir deploy\build\client\tests -C Release -R "^(WireguardConnectionMonitorTest|DaemonConnectionRecoveryTest)$" --no-tests=error --output-on-failure --timeout 60
+
+      - name: Record installer checksum
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem deploy/build/AmneziaVPN_*_windows_x64.exe)
+          if ($installers.Count -ne 1) {
+            throw "Expected one Windows EXE installer, found $($installers.Count)"
+          }
+          $installer = $installers[0]
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii deploy/build/SHA256SUMS.txt
+          "Source commit: $env:GITHUB_SHA" | Set-Content -Encoding ascii deploy/build/BUILD.txt
+          Get-Content deploy/build/SHA256SUMS.txt
+
+      - name: Upload EXE installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AmneziaVPN-windows-x64-recovery
+          path: |
+            deploy/build/AmneziaVPN_*_windows_x64.exe
+            deploy/build/SHA256SUMS.txt
+            deploy/build/BUILD.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload recovery test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-recovery-test-results
+          path: deploy/build/client/tests/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 30
